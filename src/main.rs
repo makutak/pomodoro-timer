@@ -15,7 +15,7 @@ const FONT: Font = Font::External {
 const FPS: u64 = 30;
 const MILLISEC: u64 = 30;
 const MINUTE: u64 = 60;
-const HOUR: u64 = 60;
+const HOUR: u64 = 60 * MINUTE;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -47,7 +47,7 @@ impl Application for GUI {
         (
             GUI {
                 last_update: Instant::now(),
-                total_duration: Duration::default(),
+                total_duration: Duration::new(25 * MINUTE, 0),
                 tick_state: TickState::Stopped,
                 start_stop_button_state: button::State::new(),
                 reset_button_state: button::State::new(),
@@ -72,7 +72,8 @@ impl Application for GUI {
             }
             Message::Reset => {
                 self.last_update = Instant::now();
-                self.total_duration = Duration::default();
+                self.total_duration = Duration::new(25 * MINUTE, 0);
+                //self.total_duration = Duration::default()
             }
             Message::Update => match self.tick_state {
                 TickState::Ticking => {
@@ -95,8 +96,7 @@ impl Application for GUI {
         // prepare duration text
         let seconds = self.total_duration.as_secs();
         let duration_time = format!(
-            "{:0>2}:{:0>2}:{:0>2}.{:0>2}",
-            seconds / HOUR,
+            "{:0>2}:{:0>2}.{:0>2}",
             (seconds % HOUR) / MINUTE,
             seconds % MINUTE,
             self.total_duration.subsec_millis() / 10,
