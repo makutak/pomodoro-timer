@@ -47,8 +47,7 @@ impl Application for GUI {
         (
             GUI {
                 last_update: Instant::now(),
-                total_duration: Duration::new(10, 0),
-                //Duration::new(25 * MINUTE, 0),
+                total_duration: Duration::new(25 * MINUTE, 0),
                 tick_state: TickState::Stopped,
                 start_stop_button_state: button::State::new(),
                 reset_button_state: button::State::new(),
@@ -73,15 +72,22 @@ impl Application for GUI {
             }
             Message::Reset => {
                 self.last_update = Instant::now();
-                //self.total_duration = Duration::new(25 * MINUTE, 0);
-                self.total_duration = Duration::new(10, 0);
-                //self.total_duration = Duration::default()
+                self.total_duration = Duration::new(25 * MINUTE, 0);
             }
             Message::Update => match self.tick_state {
                 TickState::Ticking => {
                     let now_update = Instant::now();
-                    self.total_duration -= now_update - self.last_update;
-                    self.last_update = now_update;
+                    let diff = now_update - self.last_update;
+                    match self.total_duration.checked_sub(diff) {
+                        None => {
+                            self.tick_state = TickState::Stopped;
+                            self.total_duration = Duration::new(25 * MINUTE, 0);
+                        }
+                        Some(v) => {
+                            self.total_duration = v;
+                            self.last_update = now_update;
+                        }
+                    }
                 }
                 _ => {}
             },
