@@ -1,18 +1,28 @@
+use std::time::{Duration, Instant};
+
 use iced::{
     button, executor, Align, Application, Button, Column, Command, Element, Font,
     HorizontalAlignment, Length, Row, Settings, Subscription, Text,
 };
+
+use iced_futures::{self, futures};
 
 const FONT: Font = Font::External {
     name: "PixelMplus12-Regular",
     bytes: include_bytes!("../rsc/PixelMplus12-Regular.ttf"),
 };
 
+const FPS: u64 = 30;
+const MILLISEC: u64 = 30;
+const MINUTE: u64 = 60;
+const HOUR: u64 = 60;
+
 #[derive(Debug, Clone)]
-pub enum Messag {
+pub enum Message {
     Start,
     Stop,
     Reset,
+    Update,
 }
 
 pub enum TickState {
@@ -21,19 +31,23 @@ pub enum TickState {
 }
 
 struct GUI {
+    last_update: Instant,
+    total_duration: Duration,
     tick_state: TickState,
     start_stop_button_state: button::State,
     reset_button_state: button::State,
 }
 
 impl Application for GUI {
-    type Executor = executor::Null;
-    type Message = Messag;
+    type Executor = executor::Default;
+    type Message = Message;
     type Flags = ();
 
     fn new(_flags: ()) -> (GUI, Command<Self::Message>) {
         (
             GUI {
+                last_update: Instant::now(),
+                total_duration: Duration::default(),
                 tick_state: TickState::Stopped,
                 start_stop_button_state: button::State::new(),
                 reset_button_state: button::State::new(),
@@ -48,20 +62,45 @@ impl Application for GUI {
 
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
-            Messag::Start => {
+            Message::Start => {
                 self.tick_state = TickState::Ticking;
+                self.last_update = Instant::now();
             }
-            Messag::Stop => {
+            Message::Stop => {
                 self.tick_state = TickState::Stopped;
+                self.total_duration += Instant::now() - self.last_update;
             }
-            Messag::Reset => {}
+            Message::Reset => {
+                self.last_update = Instant::now();
+                self.total_duration = Duration::default();
+            }
+            Message::Update => match self.tick_state {
+                TickState::Ticking => {
+                    let now_update = Instant::now();
+                    self.total_duration += now_update - self.last_update;
+                    self.last_update = now_update;
+                }
+                _ => {}
+            },
         }
         Command::none()
     }
 
+    fn subscription(&self) -> Subscription<Self::Message> {
+        let timer = Timer::new(Duration::from_millis(MILLISEC / FPS));
+        iced::Subscription::from_recipe(timer).map(|_| Message::Update)
+    }
+
     fn view(&mut self) -> Element<Self::Message> {
         // prepare duration text
-        let duration_time = "25:00:00.00";
+        let seconds = self.total_duration.as_secs();
+        let duration_time = format!(
+            "{:0>2}:{:0>2}:{:0>2}.{:0>2}",
+            seconds / HOUR,
+            (seconds % HOUR) / MINUTE,
+            seconds % MINUTE,
+            self.total_duration.subsec_millis() / 10,
+        );
 
         // prepare start/stop text
         let start_stop_text = match self.tick_state {
@@ -75,8 +114,8 @@ impl Application for GUI {
 
         // prepare start/stop message on button press
         let start_stop_message = match self.tick_state {
-            TickState::Stopped => Messag::Start,
-            TickState::Ticking => Messag::Stop,
+            TickState::Stopped => Message::Start,
+            TickState::Ticking => Message::Stop,
         };
 
         // init widgets
@@ -92,7 +131,7 @@ impl Application for GUI {
                 .font(FONT),
         )
         .min_width(80)
-        .on_press(Messag::Reset);
+        .on_press(Message::Reset);
 
         // prepare column
         Column::new()
@@ -114,4 +153,38 @@ impl Application for GUI {
 
 fn main() {
     GUI::run(Settings::default())
+}
+
+pub struct Timer {
+    duration: Duration,
+}
+
+impl Timer {
+    fn new(duration: Duration) -> Timer {
+        Timer { duration: duration }
+    }
+}
+
+impl<H, E> iced_native::subscription::Recipe<H, E> for Timer
+where
+    H: std::hash::Hasher,
+{
+    type Output = Instant;
+
+    fn hash(&self, state: &mut H) {
+        use std::hash::Hash;
+
+        std::any::TypeId::of::<Self>().hash(state);
+        self.duration.hash(state);
+    }
+
+    fn stream(
+        self: Box<Self>,
+        _input: futures::stream::BoxStream<'static, E>,
+    ) -> futures::stream::BoxStream<'static, Self::Output> {
+        use futures::stream::StreamExt;
+        async_std::stream::interval(self.duration)
+            .map(|_| Instant::now())
+            .boxed()
+    }
 }
